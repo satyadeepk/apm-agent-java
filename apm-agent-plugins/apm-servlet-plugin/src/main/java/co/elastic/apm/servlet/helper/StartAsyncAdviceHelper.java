@@ -21,27 +21,17 @@ package co.elastic.apm.servlet.helper;
 
 import co.elastic.apm.impl.ElasticApmTracer;
 import co.elastic.apm.impl.transaction.Transaction;
-import co.elastic.apm.servlet.AsyncInstrumentation;
 import co.elastic.apm.servlet.ServletApiAdvice;
 import co.elastic.apm.servlet.ServletTransactionHelper;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.ServletRequest;
 
-public class StartAsyncAdviceHelperImpl implements AsyncInstrumentation.StartAsyncAdviceHelper<AsyncContext> {
+public class StartAsyncAdviceHelper {
 
     private static final String ASYNC_LISTENER_ADDED = ServletApiAdvice.class.getName() + ".asyncListenerAdded";
 
-    private final ServletTransactionHelper servletTransactionHelper;
-    private final ElasticApmTracer tracer;
-
-    public StartAsyncAdviceHelperImpl(ElasticApmTracer tracer) {
-        this.tracer = tracer;
-        servletTransactionHelper = new ServletTransactionHelper(tracer);
-    }
-
-    @Override
-    public void onExitStartAsync(AsyncContext asyncContext) {
+    public static void onExitStartAsync(ServletTransactionHelper servletTransactionHelper, AsyncContext asyncContext, ElasticApmTracer tracer) {
         final ServletRequest request = asyncContext.getRequest();
         if (request.getAttribute(ASYNC_LISTENER_ADDED) != null) {
             return;

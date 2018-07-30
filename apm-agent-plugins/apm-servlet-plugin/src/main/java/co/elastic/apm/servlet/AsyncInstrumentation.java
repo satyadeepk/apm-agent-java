@@ -20,9 +20,9 @@
 package co.elastic.apm.servlet;
 
 import co.elastic.apm.bci.ElasticApmInstrumentation;
-import co.elastic.apm.bci.HelperClassManager;
 import co.elastic.apm.bci.VisibleForAdvice;
 import co.elastic.apm.impl.ElasticApmTracer;
+import co.elastic.apm.servlet.helper.StartAsyncAdviceHelper;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
@@ -60,14 +60,25 @@ public class AsyncInstrumentation extends ElasticApmInstrumentation {
     private static final String SERVLET_API_ASYNC_GROUP_NAME = "servlet-api-async";
     @Nullable
     @VisibleForAdvice
-    // referring to AsyncContext is legal because of type erasure
-    public static HelperClassManager<StartAsyncAdviceHelper<AsyncContext>> asyncHelper;
+    public static ServletTransactionHelper servletTransactionHelper;
 
     @Override
     public void init(ElasticApmTracer tracer) {
-        asyncHelper = HelperClassManager.ForSingleClassLoader.of(tracer,
-            "co.elastic.apm.servlet.helper.StartAsyncAdviceHelperImpl",
-            "co.elastic.apm.servlet.helper.ApmAsyncListener");
+        servletTransactionHelper = new ServletTransactionHelper(tracer);
+    }
+
+    @Override
+    public Collection<String> getHelperClassNames() {
+        // this is somewhat problematic, as the helper classes are already on the bootstrap class loaders' path
+        // so when accessing these classes, we might not access the injected classes, but those from the bootstrap class loader
+        // however, as the referenced types like AsyncContext are not accessible from the bootstrap class loader,
+        // the loading of these classes fails.
+        // It actually not completely fails but does so in a way that it appears like the bootstrap class loader does not have access
+        // to these classes at all.
+        // So only the parent delegation of the class loading attempt fails which makes the class being loaded with the desired class loader
+        // A cleaner approach would be to package the helper classes into a different jar, which is not added to the bootstrap class
+        // loader search
+        return Arrays.asList("co.elastic.apm.servlet.helper.StartAsyncAdviceHelper", "co.elastic.apm.servlet.helper.ApmAsyncListener");
     }
 
     @Override
@@ -109,17 +120,13 @@ public class AsyncInstrumentation extends ElasticApmInstrumentation {
         return StartAsyncAdvice.class;
     }
 
-    public interface StartAsyncAdviceHelper<T> {
-        void onExitStartAsync(T asyncContext);
-    }
-
     @VisibleForAdvice
     public static class StartAsyncAdvice {
 
         @Advice.OnMethodExit
         private static void onExitStartAsync(@Advice.Return AsyncContext asyncContext) {
-            if (asyncHelper != null) {
-                asyncHelper.getForClassLoaderOfClass(AsyncContext.class).onExitStartAsync(asyncContext);
+            if (tracer != null && servletTransactionHelper != null) {
+                StartAsyncAdviceHelper.onExitStartAsync(servletTransactionHelper, asyncContext, tracer);
             }
         }
     }

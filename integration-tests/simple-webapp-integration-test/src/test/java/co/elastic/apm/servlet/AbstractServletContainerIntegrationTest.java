@@ -146,7 +146,13 @@ public abstract class AbstractServletContainerIntegrationTest {
     private static String getPathToJavaagent() {
         File agentBuildDir = new File("../../elastic-apm-agent/target/");
         FileFilter fileFilter = new WildcardFileFilter("elastic-apm-agent-*.jar");
-        for (File file : agentBuildDir.listFiles(fileFilter)) {
+        final File[] files = agentBuildDir.listFiles(fileFilter);
+        if (files == null) {
+            throw new IllegalStateException("Javaagent file not found." +
+                "When executing the tests within the IDE, execute 'mvn clean package -DskipTests=true' before running the tests. " +
+                "Also, make sure to re-run that command when making code changes which should be reflected in the agent jar.");
+        }
+        for (File file : files) {
             if (!file.getAbsolutePath().endsWith("javadoc.jar") && !file.getAbsolutePath().endsWith("sources.jar")) {
                 return file.getAbsolutePath();
             }

@@ -37,7 +37,7 @@ public class ApmAsyncListener implements AsyncListener {
     private final Transaction transaction;
     private volatile boolean completed = false;
 
-    ApmAsyncListener(ServletTransactionHelper servletTransactionHelper, Transaction transaction) {
+    public ApmAsyncListener(ServletTransactionHelper servletTransactionHelper, Transaction transaction) {
         this.servletTransactionHelper = servletTransactionHelper;
         this.transaction = transaction;
     }

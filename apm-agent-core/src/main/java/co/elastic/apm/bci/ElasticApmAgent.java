@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
 import java.util.Collection;
@@ -90,8 +91,12 @@ public class ElasticApmAgent {
         int numberOfAdvices = 0;
         for (final ElasticApmInstrumentation advice : instrumentations) {
             if (isIncluded(advice, tracer.getConfig(CoreConfiguration.class))) {
-                numberOfAdvices++;
-                agentBuilder = applyAdvice(tracer, agentBuilder, advice);
+                try {
+                    agentBuilder = applyAdvice(tracer, agentBuilder, advice);
+                    numberOfAdvices++;
+                } catch (Exception e) {
+                    logger.warn("Exception while applying advice {}. Skipping this advice.", advice, e);
+                }
             }
         }
         logger.debug("Applied {} advices", numberOfAdvices);
@@ -118,11 +123,11 @@ public class ElasticApmAgent {
     }
 
     private static AgentBuilder applyAdvice(final ElasticApmTracer tracer, final AgentBuilder agentBuilder,
-                                            final ElasticApmInstrumentation advice) {
+                                            final ElasticApmInstrumentation advice) throws IOException {
         final Logger logger = LoggerFactory.getLogger(ElasticApmAgent.class);
         logger.debug("Applying advice {}", advice.getClass().getName());
         advice.init(tracer);
-        return agentBuilder
+        AgentBuilder.Identified.Extendable adviceBuilder = agentBuilder
             .type(new AgentBuilder.RawMatcher() {
                 @Override
                 public boolean matches(TypeDescription typeDescription, ClassLoader classLoader, JavaModule module, Class<?> classBeingRedefined, ProtectionDomain protectionDomain) {
@@ -156,8 +161,12 @@ public class ElasticApmAgent {
                     }
                 }, advice.getAdviceClass().getName())
                 .include(advice.getAdviceClass().getClassLoader())
-                .withExceptionHandler(PRINTING))
-            .asDecorator();
+                .withExceptionHandler(PRINTING));
+        final Collection<String> helperClassNames = advice.getHelperClassNames();
+        if (helperClassNames.size() > 0) {
+            adviceBuilder = adviceBuilder.transform(new HelperClassInjector(helperClassNames));
+        }
+        return adviceBuilder.asDecorator();
     }
 
     // may help to debug classloading problems
@@ -223,5 +232,10 @@ public class ElasticApmAgent {
     @Nullable
     public static String getAgentHome() {
         return agentJarFile == null ? null : agentJarFile.getParent();
+    }
+
+    @Nullable
+    public static Instrumentation getInstrumentation() {
+        return instrumentation;
     }
 }
